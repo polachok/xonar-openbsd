@@ -235,21 +235,100 @@ int xonar_get_props(void *handle)
 	return /*AUDIO_PROP_INDEPENDENT |*/ AUDIO_PROP_FULLDUPLEX;
 }
 
+static int
+xonar_ds_set_volume(struct xonar_t *sc, int which, int left, int right)
+{
+	left  = (left  * 127) / 100;
+	right = (right * 127) / 100;
+	switch (which) {
+	case 0: // front
+		xonar_write_spi (sc, XONAR_DS_FRONTDAC, 0, left|0x80);
+                xonar_write_spi (sc, XONAR_DS_FRONTDAC, 1, right|0x180);
+                xonar_write_spi (sc, XONAR_DS_FRONTDAC, 3, left|0x80);
+                xonar_write_spi (sc, XONAR_DS_FRONTDAC, 4, right|0x180);
+                break;
+	default:
+		return ENXIO;
+	}
+	return 0;
+}
+
+static int 
+xonar_set_volume(struct xonar_t *sc, int which, int left, int right)
+{
+	switch (sc->model) {
+	case SUBID_XONAR_DS:
+	case SUBID_XONAR_DSX:
+		return xonar_ds_set_volume(sc, which, left, right);
+	default:
+		return ENXIO;
+	}
+	return 0;
+}
+
 int
 xonar_set_port(void *handle, mixer_ctrl_t *cp)
 {
-	return EINVAL;
+	struct xonar_t *sc = handle;
+
+	switch (cp->dev) {
+	case 0:
+		switch (cp->un.value.num_channels) {
+		case 2:
+			return xonar_set_volume(sc, 0,
+				 cp->un.value.level[AUDIO_MIXER_LEVEL_LEFT],
+				 cp->un.value.level[AUDIO_MIXER_LEVEL_RIGHT]);
+		default:
+			return ENXIO;
+		}
+		break;
+	default:
+		return ENXIO;
+	}
+	return 0;
 }
 
 int 
 xonar_get_port(void *handle, mixer_ctrl_t *cp)
 {
-	return EINVAL;
+	//struct xonar_t *sc = handle;
+
+	switch (cp->dev) {
+	case 0:
+		switch (cp->un.value.num_channels) {
+		case 1:
+			cp->un.value.level[AUDIO_MIXER_LEVEL_MONO] = 0;
+			break;
+		case 2:
+			cp->un.value.level[AUDIO_MIXER_LEVEL_LEFT] = 0;
+			cp->un.value.level[AUDIO_MIXER_LEVEL_RIGHT] = 0;
+			break;
+		default:
+			return EINVAL;
+		}
+		break;
+	default:
+		return ENXIO;
+	}
+	return 0;
 }
 
 int xonar_query_devinfo(void *handle, mixer_devinfo_t *dip) 
 {
-	return ENXIO;
+	switch (dip->index) {
+	case 0:
+		dip->mixer_class = AUDIO_MIXER_VALUE;
+		dip->next = dip->prev = AUDIO_MIXER_LAST;
+		strlcpy(dip->label.name, AudioNdac, sizeof dip->label.name);
+		dip->type = AUDIO_MIXER_VALUE;
+		dip->un.v.num_channels = 2;
+		strlcpy(dip->un.v.units.name, AudioNvolume,
+				sizeof dip->un.v.units.name);
+		break;
+	default:
+		return ENXIO;
+	}
+	return 0;
 }
 
 int
